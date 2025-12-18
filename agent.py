@@ -2,7 +2,7 @@
 """
 AI Agent – marchespublics.gov.ma
 - البحث بالكلمات المفتاحية
-- استخراج العروض المستقبلية فقط
+- استخراج العروض (اليوم + المستقبل)
 - استخراج المدينة
 - توحيد الجهة
 - تصدير CSV
@@ -73,27 +73,26 @@ def get_region_from_city(ville):
 BASE_URL = "https://www.marchespublics.gov.ma/bdc/entreprise/consultation/"
 BASE_DOMAIN = "https://www.marchespublics.gov.ma"
 
+today = datetime.now().date()
 results = []
 seen_links = set()
-today = datetime.now().date()
 
 # =============================
-# أدوات استخراج
+# استخراج التاريخ + المدينة
 # =============================
 def extract_date_and_city(text):
-    # التاريخ
     m = re.search(r"(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})?", text)
     if not m:
         return None, None
 
     date_str = m.group(1)
     time_str = m.group(2) or "00:00"
+
     date_obj = datetime.strptime(
         date_str + " " + time_str,
         "%d/%m/%Y %H:%M"
     )
 
-    # المدينة
     ville = ""
     if "Lieu d'exécution" in text:
         part = text.split("Lieu d'exécution", 1)[1]
@@ -115,7 +114,6 @@ with sync_playwright() as p:
 
         page.goto(BASE_URL, timeout=60000)
 
-        # انتظار خانة إدخال
         page.wait_for_selector("input", timeout=60000)
         search_input = page.locator("input").first
         search_input.fill(kw)
@@ -131,7 +129,6 @@ with sync_playwright() as p:
             if not href:
                 continue
 
-            # إكمال الرابط إن كان ناقصًا
             if href.startswith("/"):
                 href = BASE_DOMAIN + href
 
@@ -142,14 +139,16 @@ with sync_playwright() as p:
             detail = browser.new_page()
             detail.goto(href, timeout=60000)
             body_text = detail.inner_text("body")
+            detail.close()
 
             date_limite, ville = extract_date_and_city(body_text)
-            detail.close()
 
             if not date_limite:
                 continue
 
-            
+            # ✅ الفلترة الصحيحة: اليوم + المستقبل
+            if date_limite.date() < today:
+                continue
 
             region = get_region_from_city(ville)
 
@@ -163,6 +162,8 @@ with sync_playwright() as p:
             })
 
     browser.close()
+
+print("عدد العروض المقبولة:", len(results))
 
 # =============================
 # حفظ CSV
@@ -184,4 +185,3 @@ with open(filename, "w", newline="", encoding="utf-8") as f:
 print("✅ انتهى التنفيذ")
 print(f"📄 عدد العروض: {len(results)}")
 print(f"📁 الملف: {filename}")
-
