@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 import csv
 import re
 from datetime import datetime
@@ -37,25 +38,15 @@ with sync_playwright() as p:
 
     for kw in KEYWORDS:
         print(f"🔎 Recherche: {kw}")
+
         page.goto(BASE_URL, timeout=60000)
 
-        # الذهاب لصفحة العروض
-page.goto(BASE_URL, timeout=60000)
+        # انتظار أي خانة إدخال
+        page.wait_for_selector("input", timeout=60000)
+        search_input = page.locator("input").first
+        search_input.fill(kw)
+        search_input.press("Enter")
 
-# انتظار أي خانة إدخال (بدون افتراض type=search)
-page.wait_for_selector("input", timeout=60000)
-
-# اختيار أول input في الصفحة
-search_input = page.locator("input").first
-
-# كتابة الكلمة المفتاحية
-search_input.fill(kw)
-
-# الضغط على Enter
-search_input.press("Enter")
-
-# انتظار تحميل النتائج
-page.wait_for_timeout(4000)
         page.wait_for_timeout(4000)
 
         links = page.locator("a:has-text('Référence')")
@@ -82,9 +73,14 @@ page.wait_for_timeout(4000)
 
     browser.close()
 
+# حفظ CSV
 with open("results.csv", "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(f, fieldnames=["mot_cle", "lien", "date_limite"])
+    writer = csv.DictWriter(
+        f,
+        fieldnames=["mot_cle", "lien", "date_limite"]
+    )
     writer.writeheader()
     writer.writerows(results)
 
-print("✅ CSV créé:", len(results))
+print(f"✅ CSV créé: {len(results)} lignes")
+
