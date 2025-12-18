@@ -39,8 +39,23 @@ with sync_playwright() as p:
         print(f"🔎 Recherche: {kw}")
         page.goto(BASE_URL, timeout=60000)
 
-        page.fill("input[type=search]", kw)
-        page.keyboard.press("Enter")
+        # الذهاب لصفحة العروض
+page.goto(BASE_URL, timeout=60000)
+
+# انتظار أي خانة إدخال (بدون افتراض type=search)
+page.wait_for_selector("input", timeout=60000)
+
+# اختيار أول input في الصفحة
+search_input = page.locator("input").first
+
+# كتابة الكلمة المفتاحية
+search_input.fill(kw)
+
+# الضغط على Enter
+search_input.press("Enter")
+
+# انتظار تحميل النتائج
+page.wait_for_timeout(4000)
         page.wait_for_timeout(4000)
 
         links = page.locator("a:has-text('Référence')")
