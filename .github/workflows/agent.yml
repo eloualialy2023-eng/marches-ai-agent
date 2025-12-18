@@ -1,26 +1,29 @@
-name: Test AI Agent
+name: Marches AI Agent
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
 
       - name: Run agent
         run: |
           python agent.py
 
-      - name: Upload results CSV
+      - name: Upload CSV
         uses: actions/upload-artifact@v4
         with:
           name: results
