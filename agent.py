@@ -121,8 +121,10 @@ with sync_playwright() as p:
 
         page.wait_for_timeout(4000)
 
-        links = page.locator("a:has-text('Référence')")
+        links = page.locator("a[href*='/bdc/entreprise/consultation/show/']")
         count = links.count()
+        
+        print("عدد الروابط في الصفحة:", count)
 
         for i in range(count):
             href = links.nth(i).get_attribute("href")
