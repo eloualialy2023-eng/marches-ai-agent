@@ -149,8 +149,7 @@ with sync_playwright() as p:
             if not date_limite:
                 continue
 
-            if date_limite.date() <= today:
-                continue
+            
 
             region = get_region_from_city(ville)
 
