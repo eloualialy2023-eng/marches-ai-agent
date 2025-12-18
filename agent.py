@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-AI Agent – marchespublics.gov.ma
-- البحث بالكلمات المفتاحية
-- استخراج العروض (اليوم + المستقبل)
-- استخراج المدينة
-- توحيد الجهة
+Marches Publics Agent – Version Stable
+- استخراج جميع العروض من صفحة القائمة
+- فتح صفحات التفاصيل
+- فلترة حسب التاريخ (اليوم + المستقبل)
+- استخراج المدينة والجهة
 - تصدير CSV
 """
 
@@ -13,51 +13,28 @@ import re
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
-# =============================
-# الكلمات المفتاحية
-# =============================
-KEYWORDS = [
-    "restauration",
-    "evenement ciel",
-    "Gestion d’evenements",
-    "Installation de tentes",
-    "Organisation",
-    "Organisation evenement",
-    "pause cafe",
-    "buffet",
-    "dejeuner",
-    "boissons",
-    "lunch box",
-    "repas",
-    "chapiteau",
-    "reception"
-]
+BASE_URL = "https://www.marchespublics.gov.ma/bdc/entreprise/consultation/"
+BASE_DOMAIN = "https://www.marchespublics.gov.ma"
+
+today = datetime.now().date()
+results = []
+seen_links = set()
 
 # =============================
 # المدن → الجهات
 # =============================
 CITY_MAP = {
-    # Rabat–Salé–Kénitra
     "RABAT": "Rabat–Salé–Kénitra",
     "SALE": "Rabat–Salé–Kénitra",
     "SALÉ": "Rabat–Salé–Kénitra",
     "KENITRA": "Rabat–Salé–Kénitra",
-    "KÉNITRA": "Rabat–Salé–Kénitra",
     "TEMARA": "Rabat–Salé–Kénitra",
-    "TÉMARA": "Rabat–Salé–Kénitra",
     "KHEMISSET": "Rabat–Salé–Kénitra",
-    "KHÉMISSET": "Rabat–Salé–Kénitra",
-
-    # Fès–Meknès
     "FES": "Fès–Meknès",
-    "FÈS": "Fès–Meknès",
     "MEKNES": "Fès–Meknès",
-    "MEKNÈS": "Fès–Meknès",
-
-    # Casablanca–Settat
+    "CASABLANCA": "Casablanca–Settat",
     "MOHAMMEDIA": "Casablanca–Settat",
     "SETTAT": "Casablanca–Settat",
-    "KHOURIBGA": "Casablanca–Settat",
 }
 
 def get_region_from_city(ville):
@@ -67,19 +44,6 @@ def get_region_from_city(ville):
             return region
     return ""
 
-# =============================
-# الإعدادات
-# =============================
-BASE_URL = "https://www.marchespublics.gov.ma/bdc/entreprise/consultation/"
-BASE_DOMAIN = "https://www.marchespublics.gov.ma"
-
-today = datetime.now().date()
-results = []
-seen_links = set()
-
-# =============================
-# استخراج التاريخ + المدينة
-# =============================
 def extract_date_and_city(text):
     m = re.search(r"(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})?", text)
     if not m:
@@ -102,70 +66,57 @@ def extract_date_and_city(text):
 
     return date_obj, ville
 
-# =============================
-# التنفيذ
-# =============================
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
-    for kw in KEYWORDS:
-        print(f"🔎 Recherche: {kw}")
+    print("🔎 تحميل صفحة العروض الرئيسية …")
+    page.goto(BASE_URL, timeout=60000)
+    page.wait_for_timeout(5000)
 
-        page.goto(BASE_URL, timeout=60000)
+    # 🔹 استخراج كل روابط العروض مباشرة
+    links = page.locator("a[href*='/bdc/entreprise/consultation/show/']")
+    count = links.count()
+    print("عدد الروابط في الصفحة:", count)
 
-        page.wait_for_selector("input", timeout=60000)
-        search_input = page.locator("input").first
-        search_input.fill(kw)
-        search_input.press("Enter")
+    for i in range(count):
+        href = links.nth(i).get_attribute("href")
+        if not href:
+            continue
 
-        page.wait_for_timeout(4000)
+        if href.startswith("/"):
+            href = BASE_DOMAIN + href
 
-        links = page.locator("a[href*='/bdc/entreprise/consultation/show/']")
-        count = links.count()
-        
-        print("عدد الروابط في الصفحة:", count)
+        if href in seen_links:
+            continue
+        seen_links.add(href)
 
-        for i in range(count):
-            href = links.nth(i).get_attribute("href")
-            if not href:
-                continue
+        detail = browser.new_page()
+        detail.goto(href, timeout=60000)
+        body_text = detail.inner_text("body")
+        detail.close()
 
-            if href.startswith("/"):
-                href = BASE_DOMAIN + href
+        date_limite, ville = extract_date_and_city(body_text)
+        if not date_limite:
+            continue
 
-            if href in seen_links:
-                continue
-            seen_links.add(href)
+        # فلترة: اليوم + المستقبل
+        if date_limite.date() < today:
+            continue
 
-            detail = browser.new_page()
-            detail.goto(href, timeout=60000)
-            body_text = detail.inner_text("body")
-            detail.close()
+        region = get_region_from_city(ville)
 
-            date_limite, ville = extract_date_and_city(body_text)
-
-            if not date_limite:
-                continue
-
-            # ✅ الفلترة الصحيحة: اليوم + المستقبل
-            if date_limite.date() < today:
-                continue
-
-            region = get_region_from_city(ville)
-
-            results.append({
-                "mot_cle": kw,
-                "lien": href,
-                "date_limite_date": date_limite.strftime("%d/%m/%Y"),
-                "date_limite_time": date_limite.strftime("%H:%M"),
-                "ville_execution": ville,
-                "region": region
-            })
+        results.append({
+            "lien": href,
+            "date_limite_date": date_limite.strftime("%d/%m/%Y"),
+            "date_limite_time": date_limite.strftime("%H:%M"),
+            "ville_execution": ville,
+            "region": region
+        })
 
     browser.close()
 
-print("عدد العروض المقبولة:", len(results))
+print("عدد النتائج النهائية:", len(results))
 
 # =============================
 # حفظ CSV
@@ -173,7 +124,6 @@ print("عدد العروض المقبولة:", len(results))
 filename = "marches_filtrees_regions.csv"
 with open(filename, "w", newline="", encoding="utf-8") as f:
     fieldnames = [
-        "mot_cle",
         "lien",
         "date_limite_date",
         "date_limite_time",
@@ -184,6 +134,4 @@ with open(filename, "w", newline="", encoding="utf-8") as f:
     writer.writeheader()
     writer.writerows(results)
 
-print("✅ انتهى التنفيذ")
-print(f"📄 عدد العروض: {len(results)}")
-print(f"📁 الملف: {filename}")
+print("✅ تم إنشاء الملف:", filename)
